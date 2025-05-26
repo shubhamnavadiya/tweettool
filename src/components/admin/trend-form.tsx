@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { UploadCloud, Hash, Link as LinkIcon, ListPlus, AlertCircle, AtSign } from 'lucide-react'; // Added AtSign
+import { UploadCloud, Hash, Link as LinkIcon, ListPlus, AlertCircle } from 'lucide-react';
 import { useEffect, useRef, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -53,7 +53,7 @@ export default function TrendForm() {
           <ListPlus /> Create New Trend
         </CardTitle>
         <CardDescription>
-          Define a new trend, its hashtag, a unique route, upload tweets, and optionally add tag handles.
+          Define a new trend, its hashtag, a unique route, and upload your tweets.
         </CardDescription>
       </CardHeader>
       <form action={dispatch} ref={formRef}>
@@ -75,12 +75,6 @@ export default function TrendForm() {
             <Input id="routeName" name="routeName" placeholder="my-product-launch (no spaces, lowercase)" required aria-describedby="routeName-error"/>
             <p className="text-xs text-muted-foreground">This will be part of the URL (e.g., /trends/your-route-name). Use lowercase letters, numbers, and hyphens only.</p>
             {state?.errors?.routeName && <p id="routeName-error" className="text-sm text-destructive">{state.errors.routeName.join(', ')}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="tagHandles" className="flex items-center gap-1"><AtSign className="w-4 h-4 text-muted-foreground" />Tag Handles (Optional)</Label>
-            <Input id="tagHandles" name="tagHandles" placeholder="@user1, @another_handle (comma-separated)" aria-describedby="tagHandles-error"/>
-            <p className="text-xs text-muted-foreground">Comma-separated Twitter handles (e.g., @exampleUser, @devTeam). Each handle will be appended to tweets.</p>
-            {state?.errors?.tagHandles && <p id="tagHandles-error" className="text-sm text-destructive">{state.errors.tagHandles.join(', ')}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="tweetFile" className="flex items-center gap-1"><UploadCloud className="w-4 h-4 text-muted-foreground" />Upload Tweets File (.txt)</Label>

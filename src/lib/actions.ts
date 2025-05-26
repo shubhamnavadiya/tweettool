@@ -50,13 +50,10 @@ export async function loginAction(prevState: any, formData: FormData) {
 const TrendSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
   hashtag: z.string()
-    .trim()
     .min(2, 'Hashtag must be at least 2 characters')
     .startsWith('#', 'Hashtag must start with #')
-    .transform(val => val.trim()), // Ensure it's trimmed for storage/use
+    .trim(), // Trim the hashtag input
   routeName: z.string()
-    .trim()
-    .toLowerCase()
     .min(3, 'Route name must be at least 3 characters')
     .regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens.')
     .transform(val => val.trim().toLowerCase()),
@@ -65,17 +62,6 @@ const TrendSchema = z.object({
     .refine((file) => file.size > 0, 'Tweet file is required.')
     .refine((file) => file.type === 'text/plain', 'File must be a .txt file.')
     .refine((file) => file.size < 5 * 1024 * 1024, 'File size must be less than 5MB.'),
-  tagHandles: z.string()
-    .optional()
-    .transform(val => val ? val.trim() : '') // Trim if present, else empty string
-    .refine(val => {
-      if (!val || val === '') return true; // Optional, so empty is fine
-      const handles = val.split(',').map(h => h.trim());
-      // Check if all non-empty handles start with @ and are longer than just "@"
-      return handles.every(h => h === '' || (h.startsWith('@') && h.length > 1));
-    }, {
-      message: "Handles must be comma-separated, start with '@', and be more than one character (e.g., @user), or leave empty.",
-    }),
 });
 
 
@@ -85,7 +71,6 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     hashtag: formData.get('hashtag'),
     routeName: formData.get('routeName'),
     tweetFile: formData.get('tweetFile'),
-    tagHandles: formData.get('tagHandles'),
   });
 
   if (!validatedFields.success) {
@@ -96,8 +81,8 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
-  const { title, hashtag: dynamicHashtag, routeName, tweetFile, tagHandles: tagHandlesString } = validatedFields.data;
-  // dynamicHashtag is already trimmed by Zod transform
+  // Use the validated and transformed data
+  const { title, hashtag: dynamicHashtag, routeName, tweetFile } = validatedFields.data;
 
   if (trends.some(trend => trend.routeName === routeName)) {
     return {
@@ -109,45 +94,45 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 
   try {
     const fileContent = await tweetFile.text();
-    const rawTweetsBodies: string[] = [];
+    const extractedTweets: Tweet[] = [];
 
     if (fileContent.trim().length === 0) {
-      return {
-        errors: { tweetFile: ['Uploaded file is empty.'] },
-        message: 'Uploaded file is empty. Please provide a file with tweets.',
-        success: false,
-      };
+        return {
+            errors: { tweetFile: ['Uploaded file is empty.'] },
+            message: 'Uploaded file is empty. Please provide a file with tweets.',
+            success: false,
+        };
     }
-    
+
     // Split the file content by the dynamic hashtag
     const parts = fileContent.split(dynamicHashtag);
-    
-    for (let i = 0; i < parts.length; i++) {
-      const tweetBodySegment = parts[i].trim();
-      if (tweetBodySegment.length > 0) {
-        rawTweetsBodies.push(tweetBodySegment);
-      } else if (i === parts.length - 1 && tweetBodySegment.length === 0) {
-        // If the last part is empty (e.g. file ends with hashtag), skip
-        continue;
-      } else if (i < parts.length -1) {
-        // If an empty segment is not the last one, it implies consecutive hashtags or start with hashtag.
-        // If the next part is non-empty, it should be processed.
-        // This logic might need refinement if `dynamicHashtag` can be part of a valid tweet body before another `dynamicHashtag`.
-        // For now, we assume `dynamicHashtag` primarily acts as a separator.
+    const rawTweetsBodies: string[] = [];
+
+    for (const part of parts) {
+      const tweetBody = part.trim();
+      // Add the part as a tweet body if it's not empty and not just the hashtag itself
+      if (tweetBody && tweetBody !== dynamicHashtag) {
+        rawTweetsBodies.push(tweetBody);
       }
     }
 
-    // Fallback: if no tweets were extracted by splitting with hashtag,
-    // but file is not empty, treat each line as a tweet.
-    if (rawTweetsBodies.length === 0 && fileContent.trim() !== dynamicHashtag && fileContent.trim().length > 0) {
-        const lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0 && line !== dynamicHashtag);
+    // If splitting by hashtag yields nothing (e.g., hashtag not in file, or file is just the hashtag),
+    // try splitting by newlines as a fallback, ensuring lines are not just the hashtag.
+    if (rawTweetsBodies.length === 0 && fileContent.trim() !== dynamicHashtag) {
+        const lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line && line !== dynamicHashtag);
         if (lines.length > 0) {
             lines.forEach(line => {
-                rawTweetsBodies.push(line);
+                 // Ensure the line doesn't ALREADY end with the hashtag before appending.
+                // This is a simplified check; more robust would be to ensure it's not `line + ' ' + hashtag`
+                if (!line.endsWith(dynamicHashtag)) {
+                    rawTweetsBodies.push(line);
+                } else {
+                    rawTweetsBodies.push(line.substring(0, line.lastIndexOf(dynamicHashtag)).trim());
+                }
             });
         }
     }
-
+    
     if (rawTweetsBodies.length === 0) {
        return {
          errors: { tweetFile: [`No valid tweet content found. Ensure content exists before each occurrence of "${dynamicHashtag}", or that the file is not empty or structured solely around the hashtag.`] },
@@ -155,51 +140,18 @@ export async function createTrendAction(prevState: any, formData: FormData) {
          success: false,
        };
     }
-    
-    const extractedTweets: Tweet[] = [];
-    let parsedTagHandles: string[] = [];
 
-    if (tagHandlesString && tagHandlesString.trim().length > 0) {
-      parsedTagHandles = tagHandlesString
-        .split(',')
-        .map(h => h.trim())
-        .filter(h => h.startsWith('@') && h.length > 1); // Ensures valid handles
-      
-      // If the user provided input for tagHandles but none were valid after parsing
-      if (parsedTagHandles.length === 0 && tagHandlesString.trim() !== '') {
-         return {
-           errors: { tagHandles: ["No valid tag handles found from your input. Ensure they start with '@', are longer than one character, and are comma-separated."] },
-           message: 'Tag handles were provided but none were valid.',
-           success: false,
-         };
-      }
-    }
-
-    rawTweetsBodies.forEach((body, tweetIndex) => {
-      const baseTweetContent = body.trim();
-
-      if (parsedTagHandles.length > 0) {
-        parsedTagHandles.forEach((handle, handleIndex) => {
-          extractedTweets.push({
-            id: `${routeName}-tweet-${Date.now()}-${tweetIndex}-${handleIndex}`, // Unique ID per generated tweet
-            content: `${baseTweetContent} ${dynamicHashtag}\n${handle}`,
-          });
-        });
-      } else {
-        // No valid tag handles provided, or field was empty
-        extractedTweets.push({
-          id: `${routeName}-tweet-${Date.now()}-${tweetIndex}`,
-          content: `${baseTweetContent} ${dynamicHashtag}`,
-        });
-      }
+    rawTweetsBodies.forEach((body, index) => {
+      extractedTweets.push({
+        id: `${routeName}-tweet-${Date.now()}-${index}`,
+        content: `${body.trim()} ${dynamicHashtag}`, // Ensure hashtag is appended
+      });
     });
     
     if (extractedTweets.length === 0) {
-      // This case should ideally be caught earlier if rawTweetsBodies is empty,
-      // or if tagHandles were provided but all invalid.
       return {
-        errors: {}, // General error
-        message: 'No tweets could be generated. Please check your input file and tag handles.',
+        errors: {},
+        message: 'No tweets could be generated. Please check your input file.',
         success: false,
       };
     }
@@ -207,7 +159,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     const newTrend: Trend = {
       id: `trend-${Date.now()}`,
       title,
-      hashtag: dynamicHashtag, 
+      hashtag: dynamicHashtag,
       routeName,
       tweets: extractedTweets,
       createdAt: new Date(),
@@ -220,7 +172,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     revalidatePath('/trends');
     
     return { 
-        message: `Trend "${title}" created successfully with ${extractedTweets.length} tweet(s) using hashtag ${dynamicHashtag}${parsedTagHandles.length > 0 ? ` and ${parsedTagHandles.length} tag handle(s)` : ''}. View at /trends/${routeName}`, 
+        message: `Trend "${title}" created successfully with ${extractedTweets.length} tweet(s) using hashtag ${dynamicHashtag}. View at /trends/${routeName}`, 
         success: true, 
         newTrendRoute: `/trends/${routeName}` 
     };
@@ -236,6 +188,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 }
 
 export async function getTrendByRouteName(routeName: string): Promise<Trend | undefined> {
+  // Ensure the lookup key is consistently processed: trimmed and lowercased
   const processedRouteName = routeName.trim().toLowerCase(); 
   return trends.find(trend => trend.routeName === processedRouteName);
 }

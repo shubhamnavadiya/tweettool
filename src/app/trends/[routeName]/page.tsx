@@ -1,3 +1,4 @@
+
 import { getTrendByRouteName } from '@/lib/actions';
 import TweetCard from '@/components/trends/tweet-card';
 import { AlertTriangle, Info } from 'lucide-react';
@@ -12,7 +13,8 @@ interface TrendPageProps {
 }
 
 export default async function TrendPage({ params }: TrendPageProps) {
-  const { routeName } = params;
+  const { routeName: rawRouteName } = params;
+  const routeName = rawRouteName.toLowerCase(); // Normalize to lowercase
   const trend = await getTrendByRouteName(routeName);
 
   if (!trend) {
@@ -65,7 +67,8 @@ export default async function TrendPage({ params }: TrendPageProps) {
 // }
 
 export async function generateMetadata({ params }: TrendPageProps) {
-  const trend = await getTrendByRouteName(params.routeName);
+  const routeName = params.routeName.toLowerCase(); // Normalize to lowercase
+  const trend = await getTrendByRouteName(routeName);
   if (!trend) {
     return {
       title: 'Trend Not Found',

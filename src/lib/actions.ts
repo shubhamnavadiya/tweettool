@@ -40,7 +40,7 @@ const TrendSchema = z.object({
     .trim()
     .toLowerCase()
     .min(3, 'Route name must be at least 3 characters')
-    .regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens (after trimming and lowercasing).'),
+    .regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens.'),
   tweetFile: z
     .instanceof(File)
     .refine((file) => file.size > 0, 'Tweet file is required.')
@@ -52,7 +52,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
   const validatedFields = TrendSchema.safeParse({
     title: formData.get('title'),
     hashtag: formData.get('hashtag'),
-    routeName: formData.get('routeName'),
+    routeName: formData.get('routeName'), // Already trimmed and lowercased by Zod transform if added
     tweetFile: formData.get('tweetFile'),
   });
 
@@ -64,9 +64,8 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
-  const { title, hashtag, routeName, tweetFile } = validatedFields.data; // routeName is now trimmed and lowercased
+  const { title, hashtag, routeName, tweetFile } = validatedFields.data;
 
-  // Check for routeName uniqueness
   if (trends.some(trend => trend.routeName === routeName)) {
     return {
       errors: { routeName: ['This route name is already taken.'] },
@@ -77,30 +76,32 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 
   try {
     const fileContent = await tweetFile.text();
-    const specialHashtag = '#ViksitGujaratGreenGujarat';
-    const markerIndex = fileContent.indexOf(specialHashtag);
-
-    let firstTweetContent = '';
-    let remainingContentForSplitting = fileContent;
-
-    if (markerIndex !== -1) {
-      firstTweetContent = fileContent.substring(0, markerIndex).trim();
-      remainingContentForSplitting = fileContent.substring(markerIndex + specialHashtag.length).trim();
-    }
+    const specificHashtag = '#ViksitGujaratGreenGujarat';
     
-    const allTweetContents: string[] = [];
-    if (firstTweetContent.length > 0) {
-      allTweetContents.push(firstTweetContent);
+    const lines = fileContent.split('\n');
+    const processedTweetContents: string[] = [];
+
+    for (const line of lines) {
+        let tweetText = line.trim();
+        if (tweetText === "") continue; // Skip empty or whitespace-only lines
+
+        // Check if the tweet already ends with the specific hashtag
+        if (tweetText.endsWith(specificHashtag)) {
+            // If it ends with the hashtag, ensure there's a space before it,
+            // unless the tweet IS ONLY the hashtag.
+            if (tweetText.length > specificHashtag.length && tweetText.charAt(tweetText.length - specificHashtag.length - 1) !== ' ') {
+                // Ends with hashtag but no preceding space, and it's not just the hashtag
+                tweetText = tweetText.substring(0, tweetText.length - specificHashtag.length).trimEnd() + ' ' + specificHashtag;
+            }
+            // If it's just the hashtag or already has a space, it's fine.
+        } else {
+            // If it doesn't end with the hashtag, append it with a space.
+            tweetText = tweetText + ' ' + specificHashtag;
+        }
+        processedTweetContents.push(tweetText);
     }
 
-    const otherTweets = remainingContentForSplitting
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    
-    allTweetContents.push(...otherTweets);
-
-    if (allTweetContents.length === 0) {
+    if (processedTweetContents.length === 0) {
        return {
          errors: { tweetFile: ['No tweets found in the uploaded file or file is empty after processing.'] },
          message: 'Uploaded file contains no valid tweets.',
@@ -108,9 +109,9 @@ export async function createTrendAction(prevState: any, formData: FormData) {
        };
     }
 
-    const extractedTweets: Tweet[] = allTweetContents
+    const extractedTweets: Tweet[] = processedTweetContents
       .map((content, index) => ({
-        id: `${routeName}-tweet-${Date.now()}-${index + 1}`, // Unique tweet IDs
+        id: `${routeName}-tweet-${Date.now()}-${index + 1}`,
         content: content,
       }));
 
@@ -118,16 +119,16 @@ export async function createTrendAction(prevState: any, formData: FormData) {
       id: `trend-${Date.now()}`,
       title,
       hashtag,
-      routeName, // Storing the trimmed, lowercased routeName
+      routeName,
       tweets: extractedTweets,
       createdAt: new Date(),
     };
 
-    trends.unshift(newTrend); // Add to the beginning of the array
+    trends.unshift(newTrend);
 
     revalidatePath('/admin/dashboard');
     revalidatePath(`/trends/${routeName}`);
-    revalidatePath('/trends'); // Revalidate all trends page as well
+    revalidatePath('/trends');
     
     return { 
         message: `Trend "${title}" created successfully with ${extractedTweets.length} tweets. View at /trends/${routeName}`, 
@@ -135,19 +136,22 @@ export async function createTrendAction(prevState: any, formData: FormData) {
         newTrendRoute: `/trends/${routeName}` 
     };
 
-  } catch (error) {
+  } catch (error)
+{
     console.error('Error processing file or creating trend:', error);
-    return { message: 'An unexpected error occurred while creating the trend.', success: false };
+    return { 
+        message: 'An unexpected error occurred while creating the trend. Please ensure the file is plain text and not too large.', 
+        success: false 
+    };
   }
 }
 
 export async function getTrendByRouteName(routeName: string): Promise<Trend | undefined> {
-  // Expects routeName to be already processed (trimmed, lowercased) by the caller
-  return trends.find(trend => trend.routeName === routeName);
+  const processedRouteName = routeName.trim().toLowerCase();
+  return trends.find(trend => trend.routeName === processedRouteName);
 }
 
 export async function getAllTrends(): Promise<Trend[]> {
-  // Sort by creation date, newest first
   return [...trends].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
@@ -174,11 +178,10 @@ export async function deleteTrendAction(prevState: any, formData: FormData) {
       return { message: 'Trend not found.', success: false };
     }
 
-    trends.splice(trendIndex, 1); // Remove the trend
+    trends.splice(trendIndex, 1);
 
     revalidatePath('/admin/dashboard');
-    revalidatePath('/trends'); // Revalidate the all trends page
-    // Note: Individual trend pages (/trends/[routeName]) for deleted trends will now 404, which is correct.
+    revalidatePath('/trends');
 
     return { message: 'Trend deleted successfully.', success: true };
   } catch (error) {

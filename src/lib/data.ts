@@ -1,20 +1,4 @@
-import type { Trend } from './types';
-
-// In-memory store for trends
-export const trends: Trend[] = [];
-
-// Example: Add a sample trend (optional, for testing)
-/*
-trends.push({
-  id: 'sample-trend-1',
-  title: 'My Awesome Tech Conference',
-  hashtag: '#TechConf2024',
-  routeName: 'tech-conf-2024',
-  tweets: [
-    { id: 't1', content: 'Just arrived at #TechConf2024! So excited for the keynote.' },
-    { id: 't2', content: 'Amazing session on Next.js server components. Mind blown! #TechConf2024' },
-    { id: 't3', content: 'Networking lunch was great. Met some inspiring folks. #TechConf2024' },
-  ],
-  createdAt: new Date(),
-});
-*/
+// src/lib/data.ts
+// This file previously held an in-memory array for trends.
+// With Firestore integration, this is no longer needed as data is persisted in the database.
+// You can remove this file or leave it empty.

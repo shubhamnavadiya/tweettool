@@ -3,10 +3,23 @@
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
-import { cookies as nextCookies } from 'next/headers'; // Renamed to avoid conflict
-import { trends } from './data';
+import { cookies as nextCookies } from 'next/headers';
 import type { Trend, Tweet } from './types';
 import { revalidatePath } from 'next/cache';
+import { db } from './firebase';
+import { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  Timestamp, 
+  doc, 
+  setDoc, 
+  deleteDoc,
+  getDoc
+} from 'firebase/firestore';
 
 const LoginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -26,9 +39,7 @@ export async function loginAction(prevState: any, formData: FormData) {
 
   const { username, password } = validatedFields.data;
 
-  // Check credentials
   if (username === 'bjp4botad' && password === 'BJP4Botad') {
-    // Set auth cookie
     const cookieStore = nextCookies();
     cookieStore.set('auth_session', 'true', {
       httpOnly: true,
@@ -39,13 +50,12 @@ export async function loginAction(prevState: any, formData: FormData) {
     redirect('/admin/dashboard');
   } else {
     return {
-      errors: {}, // No specific field errors, just a general message
+      errors: {},
       message: 'Invalid username or password.',
       success: false,
     };
   }
 }
-
 
 const TrendSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
@@ -63,21 +73,20 @@ const TrendSchema = z.object({
     .refine((file) => file.type === 'text/plain', 'File must be a .txt file.')
     .refine((file) => file.size < 5 * 1024 * 1024, 'File size must be less than 5MB.'),
   tagHandles: z.string().optional()
+    .transform(val => val?.trim() ?? '') // Ensure it's trimmed or empty string
     .refine(val => {
-      if (!val || val.trim() === '') return true; // Optional, so empty or whitespace is fine
+      if (val === '') return true; // Optional, so empty is fine
       const handles = val.split(',').map(h => h.trim());
-      // Every handle must start with @ and be longer than just "@"
-      return handles.every(h => h.startsWith('@') && h.length > 1);
+      return handles.every(h => h.startsWith('@') && h.length > 1 && !h.includes(' '));
     }, {
-      message: 'If provided, all tag handles must start with @ and be at least 2 characters long (e.g., @user1, @user2). Separate multiple handles with commas. Leave empty if not needed.'
+      message: 'If provided, handles must be comma-separated, start with @, be at least 2 characters long, and contain no spaces (e.g., @user1,@another_handle).'
     }),
 });
-
 
 export async function createTrendAction(prevState: any, formData: FormData) {
   const validatedFields = TrendSchema.safeParse({
     title: formData.get('title'),
-    hashtag: formData.get('hashtag')?.toString().trim(), // Ensure hashtag is trimmed
+    hashtag: formData.get('hashtag')?.toString().trim(),
     routeName: formData.get('routeName'),
     tweetFile: formData.get('tweetFile'),
     tagHandles: formData.get('tagHandles'),
@@ -92,90 +101,76 @@ export async function createTrendAction(prevState: any, formData: FormData) {
   }
 
   const { title, hashtag: dynamicHashtagInput, routeName, tweetFile, tagHandles } = validatedFields.data;
-  
-  // Ensure dynamicHashtag is just the hashtag string for processing
   const dynamicHashtag = dynamicHashtagInput.trim();
 
-
-  if (trends.some(trend => trend.routeName === routeName)) {
+  // Check for routeName uniqueness in Firestore
+  const trendsCollection = collection(db, 'trends');
+  const q = query(trendsCollection, where('routeName', '==', routeName));
+  const querySnapshot = await getDocs(q);
+  if (!querySnapshot.empty) {
     return {
       errors: { routeName: ['This route name is already taken.'] },
       message: 'Route name already exists.',
       success: false,
     };
   }
-
+  
   let appendedHandlesString = '';
   if (tagHandles && tagHandles.trim() !== '') {
     const parsedHandles = tagHandles
       .split(',')
       .map(h => h.trim())
-      .filter(h => h.startsWith('@') && h.length > 1);
+      .filter(h => h.startsWith('@') && h.length > 1); // Filter again just in case Zod refine didn't catch edge cases
     if (parsedHandles.length > 0) {
-      appendedHandlesString = parsedHandles.join(' ');
+      appendedHandlesString = parsedHandles.join(' '); // Join with space for appending
     }
   }
 
   try {
     const fileContent = await tweetFile.text();
-    const extractedTweets: Tweet[] = [];
-
     if (fileContent.trim().length === 0) {
-        return {
-            errors: { tweetFile: ['Uploaded file is empty.'] },
-            message: 'Uploaded file is empty. Please provide a file with tweets.',
-            success: false,
+      return {
+        errors: { tweetFile: ['Uploaded file is empty.'] },
+        message: 'Uploaded file is empty. Please provide a file with tweets.',
+        success: false,
+      };
+    }
+
+    const rawTweetBodies = fileContent.split(dynamicHashtag)
+      .map(segment => segment.trim())
+      .filter(segment => segment.length > 0);
+
+    if (rawTweetBodies.length === 0) {
+      // Fallback if split doesn't work as expected (e.g. hashtag not in file)
+      // Treat each line as a tweet body if it's not just the hashtag.
+      const linesAsBodies = fileContent.split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && line !== dynamicHashtag);
+      
+      if (linesAsBodies.length > 0) {
+        rawTweetBodies.push(...linesAsBodies);
+      } else {
+         return {
+          errors: { tweetFile: [`No valid tweet content found. Ensure content exists before each occurrence of "${dynamicHashtag}", or that the file is not empty and is structured correctly with the hashtag. The hashtag itself should not be the only content on lines intended as tweets.`] },
+          message: `Uploaded file contains no processable tweet content based on the dynamic hashtag "${dynamicHashtag}".`,
+          success: false,
         };
-    }
-    
-    // Split the file content by the dynamic hashtag to get segments
-    // These segments are the content *before* each occurrence of the hashtag
-    const segments = fileContent.split(dynamicHashtag);
-    let tweetBodies: string[] = [];
-
-    if (segments.length <= 1 && fileContent.trim() !== dynamicHashtag && !fileContent.includes(dynamicHashtag)) {
-      // If hashtag is not in the file at all, OR if the file is just content without the hashtag,
-      // treat lines as tweets. This is a fallback.
-      tweetBodies = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0 && line !== dynamicHashtag);
-    } else {
-       // Process segments that were before the hashtag
-      for (let i = 0; i < segments.length; i++) {
-        const segmentContent = segments[i].trim();
-        if (segmentContent.length > 0) {
-          // This segment was content before a hashtag.
-          // If it's not the last segment OR if the file ends with the hashtag, it's a valid body.
-          if (i < segments.length -1 || fileContent.endsWith(dynamicHashtag)) {
-             tweetBodies.push(segmentContent);
-          }
-        }
-      }
-       // Special case: if the file has content but the hashtag is not present, and the above loop didn't catch it.
-      if (tweetBodies.length === 0 && !fileContent.includes(dynamicHashtag) && fileContent.trim().length > 0) {
-        tweetBodies = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0 && line !== dynamicHashtag);
       }
     }
-
-
-    if (tweetBodies.length === 0) {
-       return {
-         errors: { tweetFile: [`No valid tweet content found. Ensure content exists before each occurrence of "${dynamicHashtag}", or that the file is not empty and is structured correctly with the hashtag.`] },
-         message: `Uploaded file contains no processable tweet content based on the dynamic hashtag "${dynamicHashtag}".`,
-         success: false,
-       };
-    }
     
-    tweetBodies.forEach((body, index) => {
+    const extractedTweets: Tweet[] = [];
+    rawTweetBodies.forEach((body, index) => {
       let tweetContent = `${body.trim()} ${dynamicHashtag}`;
       if (appendedHandlesString) {
         tweetContent += `\n${appendedHandlesString}`;
       }
       extractedTweets.push({
-        id: `${routeName}-tweet-${Date.now()}-${index}`,
+        id: `${routeName}-tweet-${Date.now()}-${index}`, // This ID is for client-side key, Firestore will have its own doc ID for the trend
         content: tweetContent,
       });
     });
-    
-    if (extractedTweets.length === 0) { // Should be redundant due to earlier check, but good for safety
+
+    if (extractedTweets.length === 0) {
       return {
         errors: {},
         message: `No tweets could be generated with hashtag ${dynamicHashtag}. Please check your input file.`,
@@ -183,48 +178,94 @@ export async function createTrendAction(prevState: any, formData: FormData) {
       };
     }
 
-    const newTrend: Trend = {
-      id: `trend-${Date.now()}`,
+    const trendId = `trend-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const newTrend: Omit<Trend, 'createdAt'> & { createdAt: Timestamp } = {
+      id: trendId, // Use this as Firestore document ID
       title,
       hashtag: dynamicHashtag,
       routeName,
       tweets: extractedTweets,
-      createdAt: new Date(),
+      createdAt: Timestamp.fromDate(new Date()), // Store as Firestore Timestamp
     };
 
-    trends.unshift(newTrend);
+    await setDoc(doc(db, "trends", trendId), newTrend);
 
     revalidatePath('/admin/dashboard');
     revalidatePath(`/trends/${routeName}`);
     revalidatePath('/trends');
     
     return { 
-        message: `Trend "${title}" created successfully with ${extractedTweets.length} tweet(s) using hashtag ${dynamicHashtag}. View at /trends/${routeName}`, 
-        success: true, 
-        newTrendRoute: `/trends/${routeName}` 
+      message: `Trend "${title}" created successfully with ${extractedTweets.length} tweet(s) using hashtag ${dynamicHashtag}. View at /trends/${routeName}`, 
+      success: true, 
+      newTrendRoute: `/trends/${routeName}` 
     };
 
   } catch (error) {
     console.error('Error processing file or creating trend:', error);
+    let errorMessage = 'An unexpected error occurred while creating the trend.';
+    if (error instanceof Error) {
+      errorMessage += ` Details: ${error.message}`;
+    }
     return { 
-        message: 'An unexpected error occurred while creating the trend. Please ensure the file is plain text and not too large.', 
-        success: false,
-        errors: {},
+      message: errorMessage,
+      success: false,
+      errors: {},
     };
   }
 }
 
 export async function getTrendByRouteName(routeName: string): Promise<Trend | undefined> {
-  const processedRouteName = routeName.trim().toLowerCase(); 
-  return trends.find(trend => trend.routeName === processedRouteName);
+  const processedRouteName = routeName.trim().toLowerCase();
+  const trendsCollection = collection(db, 'trends');
+  const q = query(trendsCollection, where('routeName', '==', processedRouteName));
+  
+  try {
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) {
+      return undefined;
+    }
+    // Assuming routeName is unique, so take the first doc
+    const trendDoc = querySnapshot.docs[0];
+    const data = trendDoc.data();
+    return {
+      id: trendDoc.id, // Use Firestore document ID
+      title: data.title,
+      hashtag: data.hashtag,
+      routeName: data.routeName,
+      tweets: data.tweets,
+      createdAt: (data.createdAt as Timestamp).toDate(), // Convert Timestamp to Date
+    } as Trend;
+  } catch (error) {
+    console.error("Error fetching trend by route name:", error);
+    return undefined;
+  }
 }
 
 export async function getAllTrends(): Promise<Trend[]> {
-  return [...trends].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const trendsCollection = collection(db, 'trends');
+  const q = query(trendsCollection, orderBy('createdAt', 'desc'));
+  
+  try {
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id, // Use Firestore document ID
+        title: data.title,
+        hashtag: data.hashtag,
+        routeName: data.routeName,
+        tweets: data.tweets,
+        createdAt: (data.createdAt as Timestamp).toDate(), // Convert Timestamp to Date
+      } as Trend;
+    });
+  } catch (error) {
+    console.error("Error fetching all trends:", error);
+    return []; // Return empty array on error
+  }
 }
 
 const DeleteTrendSchema = z.object({
-  trendId: z.string().min(1, 'Trend ID is required'),
+  trendId: z.string().min(1, 'Trend ID is required'), // This will be Firestore document ID
 });
 
 export async function deleteTrendAction(prevState: any, formData: FormData) {
@@ -241,19 +282,26 @@ export async function deleteTrendAction(prevState: any, formData: FormData) {
   const { trendId } = validatedFields.data;
 
   try {
-    const trendIndex = trends.findIndex(trend => trend.id === trendId);
-    if (trendIndex === -1) {
-      return { message: 'Trend not found.', success: false, errors: {} };
-    }
+    // Check if trend exists before attempting delete (optional, deleteDoc won't error if doc doesn't exist)
+    const trendDocRef = doc(db, "trends", trendId);
+    // const trendSnap = await getDoc(trendDocRef);
+    // if (!trendSnap.exists()) {
+    //   return { message: 'Trend not found in database.', success: false, errors: {} };
+    // }
 
-    trends.splice(trendIndex, 1);
+    await deleteDoc(trendDocRef);
 
     revalidatePath('/admin/dashboard');
-    revalidatePath('/trends');
+    revalidatePath('/trends'); // Revalidate all trends page
+    // Potentially revalidate specific trend pages if they were cached, though dynamic routes might handle this.
 
     return { message: 'Trend deleted successfully.', success: true, errors: null };
   } catch (error) {
     console.error('Error deleting trend:', error);
-    return { message: 'An unexpected error occurred while deleting the trend.', success: false, errors: {} };
+    let errorMessage = 'An unexpected error occurred while deleting the trend.';
+    if (error instanceof Error) {
+      errorMessage += ` Details: ${error.message}`;
+    }
+    return { message: errorMessage, success: false, errors: {} };
   }
 }

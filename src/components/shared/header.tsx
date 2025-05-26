@@ -3,28 +3,41 @@
 
 import Link from 'next/link';
 import { Bird } from 'lucide-react'; // Twitter-like bird icon
+import { usePathname } from 'next/navigation';
 
 export default function Header() {
+  const pathname = usePathname();
+  const isAdminPage = pathname.startsWith('/admin');
+
   return (
     <header className="bg-card border-b border-border shadow-sm">
-      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary hover:text-accent transition-colors">
+      <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center">
+        <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary hover:text-accent transition-colors mb-2 sm:mb-0">
           <Bird className="h-7 w-7" />
           <span>TweetTrendsTool</span>
         </Link>
         <nav>
-          <ul className="flex items-center gap-4">
+          <ul className="flex items-center gap-4 flex-wrap justify-center">
             <li>
               <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Home
               </Link>
             </li>
+            {isAdminPage && (
+              <li>
+                <Link href="/admin/dashboard" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                  Admin Dashboard
+                </Link>
+              </li>
+            )}
+             {!isAdminPage && ( // Show simplified Admin Login link on non-admin pages
+                <li>
+                  <Link href="/admin/login" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                    Admin Login
+                  </Link>
+                </li>
+            )}
             <li>
-              <Link href="/admin/login" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-                Admin
-              </Link>
-            </li>
-             <li>
               <Link href="/trends" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Trends
               </Link>

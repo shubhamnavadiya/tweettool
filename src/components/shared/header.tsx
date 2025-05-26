@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 
 export default function Header() {
   const pathname = usePathname();
-  const isAdminPage = pathname.startsWith('/admin');
+  // const isAdminPage = pathname.startsWith('/admin'); // No longer needed for link visibility
 
   return (
     <header className="bg-card border-b border-border shadow-sm">
@@ -23,13 +23,7 @@ export default function Header() {
                 Home
               </Link>
             </li>
-            {isAdminPage && ( // Only show Admin Dashboard link if on an admin page (implies logged in)
-              <li>
-                <Link href="/admin/dashboard" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-                  Admin Dashboard
-                </Link>
-              </li>
-            )}
+            {/* Admin Dashboard link removed entirely */}
             <li>
               <Link href="/trends" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Trends
@@ -41,3 +35,4 @@ export default function Header() {
     </header>
   );
 }
+

@@ -61,7 +61,6 @@ const TrendSchema = z.object({
     .refine((file) => file.size > 0, 'Tweet file is required.')
     .refine((file) => file.type === 'text/plain', 'File must be a .txt file.')
     .refine((file) => file.size < 5 * 1024 * 1024, 'File size must be less than 5MB.'),
-  tagHandles: z.string().optional(), // Comma-separated list of handles, e.g., @handle1, @handle2
 });
 
 
@@ -71,7 +70,6 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     hashtag: formData.get('hashtag'),
     routeName: formData.get('routeName'),
     tweetFile: formData.get('tweetFile'),
-    tagHandles: formData.get('tagHandles'),
   });
 
   if (!validatedFields.success) {
@@ -82,7 +80,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
-  const { title, hashtag: dynamicHashtagInput, routeName, tweetFile, tagHandles: tagHandlesInput } = validatedFields.data;
+  const { title, hashtag: dynamicHashtagInput, routeName, tweetFile } = validatedFields.data;
   const dynamicHashtag = dynamicHashtagInput.trim(); // Ensure hashtag from form is trimmed
 
   if (trends.some(trend => trend.routeName === routeName)) {
@@ -92,15 +90,6 @@ export async function createTrendAction(prevState: any, formData: FormData) {
       success: false,
     };
   }
-
-  let parsedTagHandles: string[] = [];
-  if (tagHandlesInput && tagHandlesInput.trim().length > 0) {
-    parsedTagHandles = tagHandlesInput
-      .split(',')
-      .map(h => h.trim())
-      .filter(h => h.startsWith('@') && h.length > 1); // Basic validation for handles
-  }
-  const tagHandlesString = parsedTagHandles.length > 0 ? `\n${parsedTagHandles.join(' ')}` : '';
 
 
   try {
@@ -133,11 +122,6 @@ export async function createTrendAction(prevState: any, formData: FormData) {
       } else if (i < parts.length - 1 && parts[i+1].trim().length > 0) {
         // Handle case where hashtag is at the beginning of a line or file,
         // and there's content *after* it that should be a new tweet.
-        // This logic might need refinement based on exact desired behavior for content *after* a hashtag if not split by another.
-        // For now, if a part is empty but it's not the very last part of the split,
-        // it implies the hashtag was found, and the next part might be a new tweet.
-        // This is slightly complex if a hashtag itself is meant to be a tweet.
-        // The current logic: capture text *before* the hashtag.
       }
     }
     
@@ -167,7 +151,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     const extractedTweets: Tweet[] = rawTweetsBodies
       .map((body, index) => ({
         id: `${routeName}-tweet-${Date.now()}-${index + 1}`,
-        content: `${body.trim()} ${dynamicHashtag}${tagHandlesString}`,
+        content: `${body.trim()} ${dynamicHashtag}`,
       }));
 
 

@@ -8,33 +8,33 @@ body {
 
 @layer base {
   :root {
-    --background: 210 29% 97%; /* #F5F8FA */
-    --foreground: 210 10% 23%; /* Dark grey for text */
+    --background: 210 29% 97%; /* #F5F8FA - Remains light */
+    --foreground: 210 10% 23%; /* Dark grey for text - Remains dark */
 
-    --card: 210 29% 99%; /* Slightly lighter than background or same for cards */
+    --card: 210 29% 99%; 
     --card-foreground: 210 10% 23%;
 
     --popover: 210 29% 99%;
     --popover-foreground: 210 10% 23%;
 
-    --primary: 197 76% 53%; /* #29ABE2 */
-    --primary-foreground: 0 0% 100%; /* White for text on primary blue */
+    --primary: 240 5% 15%; /* Very dark desaturated blue, near black (e.g., #242529) */
+    --primary-foreground: 0 0% 98%; /* Off-white for text on new primary */
 
-    --secondary: 210 25% 92%; /* Lighter grey for secondary elements */
-    --secondary-foreground: 210 10% 23%; /* Dark grey for text on secondary */
+    --secondary: 210 25% 92%; 
+    --secondary-foreground: 210 10% 23%;
 
     --muted: 210 25% 92%;
-    --muted-foreground: 210 7% 45%; /* Softer grey for muted text */
+    --muted-foreground: 210 7% 45%;
 
-    --accent: 201 100% 35%; /* #0077B6 */
-    --accent-foreground: 0 0% 100%; /* White for text on accent blue */
+    --accent: 240 5% 25%; /* Slightly lighter than primary, still very dark (e.g., #3C3E4A) */
+    --accent-foreground: 0 0% 98%; /* Off-white for text on new accent */
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 210 20% 88%; /* Border color */
-    --input: 210 20% 94%; /* Input background slightly different from main bg */
-    --ring: 197 76% 53%; /* Ring color often matches primary */
+    --border: 210 20% 88%; 
+    --input: 210 20% 94%; 
+    --ring: 240 5% 15%; /* Ring color matches new primary */
     
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -43,21 +43,19 @@ body {
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
 
-    /* Sidebar variables are kept for shadcn components that might use them, but won't be central to this app's design */
     --sidebar-background: 210 25% 94%;
     --sidebar-foreground: 210 10% 23%;
-    --sidebar-primary: 197 76% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 201 100% 35%;
-    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-primary: 240 5% 15%; /* Match new root primary */
+    --sidebar-primary-foreground: 0 0% 98%; /* Match new root primary-foreground */
+    --sidebar-accent: 240 5% 25%; /* Match new root accent */
+    --sidebar-accent-foreground: 0 0% 98%; /* Match new root accent-foreground */
     --sidebar-border: 210 20% 88%;
-    --sidebar-ring: 197 76% 53%;
+    --sidebar-ring: 240 5% 15%; /* Match new root ring */
   }
 
   .dark {
-    /* For dark mode, we'll invert or use a standard dark theme. For now, focus on light mode. */
-    --background: 210 10% 15%;
-    --foreground: 210 20% 95%;
+    --background: 210 10% 15%; /* Dark blue-grey background */
+    --foreground: 210 20% 95%; /* Light grey/off-white text */
 
     --card: 210 10% 20%;
     --card-foreground: 210 20% 95%;
@@ -65,8 +63,8 @@ body {
     --popover: 210 10% 20%;
     --popover-foreground: 210 20% 95%;
 
-    --primary: 197 76% 53%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 210 20% 85%; /* Light grey for interactive elements in dark mode (e.g., #CCD1D9) */
+    --primary-foreground: 210 10% 10%; /* Dark text for new dark mode primary */
 
     --secondary: 210 10% 25%;
     --secondary-foreground: 210 20% 95%;
@@ -74,15 +72,15 @@ body {
     --muted: 210 10% 25%;
     --muted-foreground: 210 10% 60%;
 
-    --accent: 201 100% 45%; /* Brighter accent for dark mode */
-    --accent-foreground: 0 0% 100%;
+    --accent: 210 20% 75%; /* Slightly darker light grey for accent in dark mode (e.g., #B8C0CC) */
+    --accent-foreground: 210 10% 10%; /* Dark text for new dark mode accent */
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 210 10% 30%;
     --input: 210 10% 30%;
-    --ring: 197 76% 53%;
+    --ring: 210 20% 85%; /* Match new dark mode primary */
 
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
@@ -92,12 +90,12 @@ body {
 
     --sidebar-background: 210 10% 18%;
     --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 197 76% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 201 100% 45%;
-    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-primary: 210 20% 85%; /* Match new .dark primary */
+    --sidebar-primary-foreground: 210 10% 10%; /* Match new .dark primary-foreground */
+    --sidebar-accent: 210 20% 75%; /* Match new .dark accent */
+    --sidebar-accent-foreground: 210 10% 10%; /* Match new .dark accent-foreground */
     --sidebar-border: 210 10% 30%;
-    --sidebar-ring: 197 76% 53%;
+    --sidebar-ring: 210 20% 85%; /* Match new .dark ring */
   }
 }
 

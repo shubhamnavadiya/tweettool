@@ -36,7 +36,11 @@ export async function loginAction(prevState: any, formData: FormData) {
 const TrendSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
   hashtag: z.string().min(2, 'Hashtag must be at least 2 characters').startsWith('#', 'Hashtag must start with #'),
-  routeName: z.string().min(3, 'Route name must be at least 3 characters').regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens'),
+  routeName: z.string()
+    .trim()
+    .toLowerCase()
+    .min(3, 'Route name must be at least 3 characters')
+    .regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens (after trimming and lowercasing).'),
   tweetFile: z
     .instanceof(File)
     .refine((file) => file.size > 0, 'Tweet file is required.')
@@ -60,7 +64,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
-  const { title, hashtag, routeName, tweetFile } = validatedFields.data;
+  const { title, hashtag, routeName, tweetFile } = validatedFields.data; // routeName is now trimmed and lowercased
 
   // Check for routeName uniqueness
   if (trends.some(trend => trend.routeName === routeName)) {
@@ -114,7 +118,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
       id: `trend-${Date.now()}`,
       title,
       hashtag,
-      routeName,
+      routeName, // Storing the trimmed, lowercased routeName
       tweets: extractedTweets,
       createdAt: new Date(),
     };
@@ -138,6 +142,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 }
 
 export async function getTrendByRouteName(routeName: string): Promise<Trend | undefined> {
+  // Expects routeName to be already processed (trimmed, lowercased) by the caller
   return trends.find(trend => trend.routeName === routeName);
 }
 

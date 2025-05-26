@@ -14,7 +14,8 @@ interface TrendPageProps {
 
 export default async function TrendPage({ params }: TrendPageProps) {
   const { routeName: rawRouteName } = params;
-  const routeName = rawRouteName.toLowerCase(); // Normalize to lowercase
+  // Ensure the lookup key is consistently processed: trimmed and lowercased
+  const routeName = rawRouteName.trim().toLowerCase(); 
   const trend = await getTrendByRouteName(routeName);
 
   if (!trend) {
@@ -23,7 +24,7 @@ export default async function TrendPage({ params }: TrendPageProps) {
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-4xl font-bold mb-2">Trend Not Found</h1>
         <p className="text-muted-foreground mb-6">
-          Sorry, the trend you are looking for ({routeName}) does not exist or could not be found.
+          Sorry, the trend you are looking for ({rawRouteName}) does not exist or could not be found.
         </p>
         <Button asChild>
           <Link href="/">Go back to Homepage</Link>
@@ -67,7 +68,9 @@ export default async function TrendPage({ params }: TrendPageProps) {
 // }
 
 export async function generateMetadata({ params }: TrendPageProps) {
-  const routeName = params.routeName.toLowerCase(); // Normalize to lowercase
+  const { routeName: rawRouteName } = params;
+  // Ensure the lookup key is consistently processed: trimmed and lowercased
+  const routeName = rawRouteName.trim().toLowerCase();
   const trend = await getTrendByRouteName(routeName);
   if (!trend) {
     return {

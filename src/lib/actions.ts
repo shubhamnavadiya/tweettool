@@ -49,7 +49,7 @@ export async function loginAction(prevState: any, formData: FormData) {
 
 const TrendSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
-  hashtag: z.string().trim().min(2, 'Hashtag must be at least 2 characters').startsWith('#', 'Hashtag must start with #'), // Added .trim()
+  hashtag: z.string().trim().min(2, 'Hashtag must be at least 2 characters').startsWith('#', 'Hashtag must start with #'),
   routeName: z.string()
     .trim()
     .toLowerCase()
@@ -61,6 +61,7 @@ const TrendSchema = z.object({
     .refine((file) => file.size > 0, 'Tweet file is required.')
     .refine((file) => file.type === 'text/plain', 'File must be a .txt file.')
     .refine((file) => file.size < 5 * 1024 * 1024, 'File size must be less than 5MB.'),
+  tagHandles: z.string().optional(), // Comma-separated list of handles, e.g., @handle1, @handle2
 });
 
 
@@ -70,6 +71,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     hashtag: formData.get('hashtag'),
     routeName: formData.get('routeName'),
     tweetFile: formData.get('tweetFile'),
+    tagHandles: formData.get('tagHandles'),
   });
 
   if (!validatedFields.success) {
@@ -80,8 +82,8 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
-  // dynamicHashtag will be trimmed here due to Zod schema
-  const { title, hashtag: dynamicHashtag, routeName, tweetFile } = validatedFields.data;
+  const { title, hashtag: dynamicHashtagInput, routeName, tweetFile, tagHandles: tagHandlesInput } = validatedFields.data;
+  const dynamicHashtag = dynamicHashtagInput.trim(); // Ensure hashtag from form is trimmed
 
   if (trends.some(trend => trend.routeName === routeName)) {
     return {
@@ -91,9 +93,19 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
+  let parsedTagHandles: string[] = [];
+  if (tagHandlesInput && tagHandlesInput.trim().length > 0) {
+    parsedTagHandles = tagHandlesInput
+      .split(',')
+      .map(h => h.trim())
+      .filter(h => h.startsWith('@') && h.length > 1); // Basic validation for handles
+  }
+  const tagHandlesString = parsedTagHandles.length > 0 ? `\n${parsedTagHandles.join(' ')}` : '';
+
+
   try {
     const fileContent = await tweetFile.text();
-    const rawTweets: string[] = [];
+    const rawTweetsBodies: string[] = [];
 
     if (fileContent.trim().length === 0) {
         return {
@@ -103,54 +115,59 @@ export async function createTrendAction(prevState: any, formData: FormData) {
         };
     }
     
-    // Use split based on the dynamic hashtag
+    // Split the file content by the dynamic hashtag
     const parts = fileContent.split(dynamicHashtag);
 
-    // If the hashtag is not in the file at all, parts will have 1 element (the whole file content)
-    if (parts.length <= 1 && !fileContent.includes(dynamicHashtag)) {
+    // Iterate through parts that were *before* a hashtag
+    for (let i = 0; i < parts.length; i++) {
+      const tweetBody = parts[i].trim();
+      
+      // If it's the last part and it's empty, it means the file ended with the hashtag or was empty after the last hashtag
+      if (i === parts.length - 1 && tweetBody.length === 0) {
+        continue; 
+      }
+
+      // If the part is not empty, consider it a tweet body
+      if (tweetBody.length > 0) {
+        rawTweetsBodies.push(tweetBody);
+      } else if (i < parts.length - 1 && parts[i+1].trim().length > 0) {
+        // Handle case where hashtag is at the beginning of a line or file,
+        // and there's content *after* it that should be a new tweet.
+        // This logic might need refinement based on exact desired behavior for content *after* a hashtag if not split by another.
+        // For now, if a part is empty but it's not the very last part of the split,
+        // it implies the hashtag was found, and the next part might be a new tweet.
+        // This is slightly complex if a hashtag itself is meant to be a tweet.
+        // The current logic: capture text *before* the hashtag.
+      }
+    }
+    
+    // If no content was found *before* any hashtag, but the file is not empty,
+    // and the file doesn't *just* consist of the hashtag itself or whitespace.
+    // This could mean the hashtag was not in the file, or the file structure is different.
+    if (rawTweetsBodies.length === 0 && fileContent.trim() !== dynamicHashtag && fileContent.trim().length > 0) {
         // Fallback: treat each non-empty line as a tweet and append the dynamic hashtag
-        const lines = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
+        // This fallback activates if the primary split-by-hashtag yields no pre-hashtag content.
+        const lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0 && line !== dynamicHashtag);
         if (lines.length > 0) {
             lines.forEach(line => {
-                rawTweets.push(line.trim() + ' ' + dynamicHashtag);
+                rawTweetsBodies.push(line);
             });
         }
-    } else {
-        // Iterate through parts that were *before* a hashtag
-        for (let i = 0; i < parts.length - 1; i++) {
-            const tweetBody = parts[i].trim();
-            if (tweetBody.length > 0) { // Ensure the body is not empty
-                rawTweets.push(`${tweetBody} ${dynamicHashtag}`);
-            }
-        }
-        // Special case: if the file ends with the hashtag, the last part might be empty.
-        // If the file content itself is *just* the hashtag (after trim)
-        // parts would be ["", ""]. The loop i < parts.length -1 (i < 1) would run for i=0. parts[0] is "". tweetBody is "".
-        // So rawTweets remains empty. This is handled by the check below.
     }
 
 
-    if (rawTweets.length === 0) {
-        // Check if the file content, after trimming, is exactly the hashtag.
-        if (fileContent.trim() === dynamicHashtag) {
-             return {
-                errors: { tweetFile: [`File only contains the hashtag (${dynamicHashtag}) or is effectively empty.`] },
-                message: `Uploaded file only contains the hashtag (${dynamicHashtag}) or no valid content before it.`,
-                success: false,
-            };
-        }
-       // If still no tweets, then the format wasn't as expected.
+    if (rawTweetsBodies.length === 0) {
        return {
-         errors: { tweetFile: [`No valid tweets found. Ensure content exists before each occurrence of "${dynamicHashtag}" or that the file is not structured solely around it without preceding content.`] },
-         message: `Uploaded file contains no processable tweets based on the format (content before "${dynamicHashtag}").`,
+         errors: { tweetFile: [`No valid tweet content found. Ensure content exists before each occurrence of "${dynamicHashtag}", or that the file is not empty or structured solely around the hashtag.`] },
+         message: `Uploaded file contains no processable tweet content based on the format (content before "${dynamicHashtag}").`,
          success: false,
        };
     }
     
-    const extractedTweets: Tweet[] = rawTweets
-      .map((content, index) => ({
+    const extractedTweets: Tweet[] = rawTweetsBodies
+      .map((body, index) => ({
         id: `${routeName}-tweet-${Date.now()}-${index + 1}`,
-        content: content,
+        content: `${body.trim()} ${dynamicHashtag}${tagHandlesString}`,
       }));
 
 

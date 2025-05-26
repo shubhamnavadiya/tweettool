@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -9,7 +10,7 @@ export default function Header() {
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary hover:text-accent transition-colors">
           <Bird className="h-7 w-7" />
-          <span>TweetStorm</span>
+          <span>TweetTrendsTool</span>
         </Link>
         <nav>
           <ul className="flex items-center gap-4">

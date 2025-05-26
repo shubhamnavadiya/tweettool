@@ -7,8 +7,8 @@ import { ArrowRight, CalendarDays, ListChecks } from 'lucide-react';
 import { format } from 'date-fns';
 
 export const metadata = {
-  title: 'All Trends | TweetStorm',
-  description: 'Browse all available tweet trends on TweetStorm.',
+  title: 'All Trends | TweetTrendsTool',
+  description: 'Browse all available tweet trends on TweetTrendsTool.',
 };
 
 export default async function AllTrendsPage() {
@@ -19,7 +19,7 @@ export default async function AllTrendsPage() {
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold text-primary">All Trends</h1>
         <p className="text-lg text-muted-foreground mt-2">
-          Explore all the tweet storms created on our platform.
+          Explore all the tweet trends created on our platform.
         </p>
       </header>
 

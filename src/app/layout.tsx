@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'TweetStorm',
-  description: 'Create and share tweet threads easily.',
+  title: 'TweetTrendsTool',
+  description: 'Create and share tweet trends easily with TweetTrendsTool.',
 };
 
 export default function RootLayout({

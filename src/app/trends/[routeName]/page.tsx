@@ -78,7 +78,7 @@ export async function generateMetadata({ params }: TrendPageProps) {
     };
   }
   return {
-    title: `${trend.title} (${trend.hashtag}) | TweetStorm`,
-    description: `View the tweet storm for ${trend.title}. Tweets: ${trend.tweets.length}`,
+    title: `${trend.title} (${trend.hashtag}) | TweetTrendsTool`,
+    description: `View the tweet trend for ${trend.title}. Tweets: ${trend.tweets.length}`,
   };
 }

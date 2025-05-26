@@ -12,11 +12,11 @@ export default async function HomePage() {
     <div className="flex flex-col items-center text-center space-y-12">
       <section className="mt-8">
         <h1 className="text-5xl font-bold tracking-tight text-primary">
-          Welcome to TweetStorm!
+          Welcome to TweetTrendsTool!
         </h1>
         <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-          Effortlessly create, manage, and share tweet threads for your campaigns, events, or ideas.
-          Upload your list of tweets and let TweetStorm help you spread the word.
+          Effortlessly create, manage, and share tweet trends for your campaigns, events, or ideas.
+          Upload your list of tweets and let TweetTrendsTool help you spread the word.
         </p>
         <div className="mt-8 flex justify-center gap-4">
           <Button asChild size="lg">

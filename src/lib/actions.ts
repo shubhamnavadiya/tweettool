@@ -49,7 +49,7 @@ export async function loginAction(prevState: any, formData: FormData) {
 
 const TrendSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
-  hashtag: z.string().min(2, 'Hashtag must be at least 2 characters').startsWith('#', 'Hashtag must start with #'),
+  hashtag: z.string().trim().min(2, 'Hashtag must be at least 2 characters').startsWith('#', 'Hashtag must start with #'), // Added .trim()
   routeName: z.string()
     .trim()
     .toLowerCase()
@@ -63,10 +63,6 @@ const TrendSchema = z.object({
     .refine((file) => file.size < 5 * 1024 * 1024, 'File size must be less than 5MB.'),
 });
 
-// Helper function to escape special characters for use in a regular expression
-function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-}
 
 export async function createTrendAction(prevState: any, formData: FormData) {
   const validatedFields = TrendSchema.safeParse({
@@ -84,6 +80,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
+  // dynamicHashtag will be trimmed here due to Zod schema
   const { title, hashtag: dynamicHashtag, routeName, tweetFile } = validatedFields.data;
 
   if (trends.some(trend => trend.routeName === routeName)) {
@@ -98,41 +95,54 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     const fileContent = await tweetFile.text();
     const rawTweets: string[] = [];
 
-    // Regex to find content blocks ending with the dynamicHashtag
-    // (.*?) non-greedy match for any character including newline, up to the dynamic hashtag
-    // The 'gs' flags are crucial: 'g' for global, 's' for dotall (so '.' matches '\n')
-    const regex = new RegExp(`(.*?)${escapeRegExp(dynamicHashtag)}(?=\\n\\n|$)`, 'gs');
-    
-    let match;
-    while ((match = regex.exec(fileContent)) !== null) {
-        // match[1] is the content before the hashtag
-        const tweetBody = match[1].trim();
-        if (tweetBody.length > 0) { // Ensure the body is not empty (i.e., not just the hashtag itself)
-            rawTweets.push(`${tweetBody} ${dynamicHashtag}`);
-        }
-    }
-
-    // Fallback: if the regex found no specific hashtag matches, 
-    // but the file has content and does not contain the dynamic hashtag at all,
-    // treat each line as a tweet and append the dynamic hashtag.
-    if (rawTweets.length === 0 && fileContent.trim().length > 0 && !fileContent.includes(dynamicHashtag)) {
-       const lines = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
-       lines.forEach(line => {
-           rawTweets.push(line.trim() + ' ' + dynamicHashtag);
-       });
-    } else if (rawTweets.length === 0 && fileContent.trim().length > 0 && fileContent.trim() === dynamicHashtag) {
-        // File only contains the hashtag, ignore.
-         return {
-            errors: { tweetFile: [`File only contains the hashtag (${dynamicHashtag}) or is effectively empty.`] },
-            message: `Uploaded file only contains the hashtag (${dynamicHashtag}) or no valid content before it.`,
+    if (fileContent.trim().length === 0) {
+        return {
+            errors: { tweetFile: ['Uploaded file is empty.'] },
+            message: 'Uploaded file is empty. Please provide a file with tweets.',
             success: false,
         };
     }
+    
+    // Use split based on the dynamic hashtag
+    const parts = fileContent.split(dynamicHashtag);
+
+    // If the hashtag is not in the file at all, parts will have 1 element (the whole file content)
+    if (parts.length <= 1 && !fileContent.includes(dynamicHashtag)) {
+        // Fallback: treat each non-empty line as a tweet and append the dynamic hashtag
+        const lines = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
+        if (lines.length > 0) {
+            lines.forEach(line => {
+                rawTweets.push(line.trim() + ' ' + dynamicHashtag);
+            });
+        }
+    } else {
+        // Iterate through parts that were *before* a hashtag
+        for (let i = 0; i < parts.length - 1; i++) {
+            const tweetBody = parts[i].trim();
+            if (tweetBody.length > 0) { // Ensure the body is not empty
+                rawTweets.push(`${tweetBody} ${dynamicHashtag}`);
+            }
+        }
+        // Special case: if the file ends with the hashtag, the last part might be empty.
+        // If the file content itself is *just* the hashtag (after trim)
+        // parts would be ["", ""]. The loop i < parts.length -1 (i < 1) would run for i=0. parts[0] is "". tweetBody is "".
+        // So rawTweets remains empty. This is handled by the check below.
+    }
+
 
     if (rawTweets.length === 0) {
+        // Check if the file content, after trimming, is exactly the hashtag.
+        if (fileContent.trim() === dynamicHashtag) {
+             return {
+                errors: { tweetFile: [`File only contains the hashtag (${dynamicHashtag}) or is effectively empty.`] },
+                message: `Uploaded file only contains the hashtag (${dynamicHashtag}) or no valid content before it.`,
+                success: false,
+            };
+        }
+       // If still no tweets, then the format wasn't as expected.
        return {
-         errors: { tweetFile: [`No valid tweets found. Ensure content exists before ${dynamicHashtag} and is not just the hashtag.`] },
-         message: `Uploaded file contains no processable tweets based on the specified format (content before ${dynamicHashtag}).`,
+         errors: { tweetFile: [`No valid tweets found. Ensure content exists before each occurrence of "${dynamicHashtag}" or that the file is not structured solely around it without preceding content.`] },
+         message: `Uploaded file contains no processable tweets based on the format (content before "${dynamicHashtag}").`,
          success: false,
        };
     }
@@ -147,7 +157,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     const newTrend: Trend = {
       id: `trend-${Date.now()}`,
       title,
-      hashtag: dynamicHashtag, // Store the dynamic hashtag
+      hashtag: dynamicHashtag, 
       routeName,
       tweets: extractedTweets,
       createdAt: new Date(),
@@ -169,13 +179,15 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     console.error('Error processing file or creating trend:', error);
     return { 
         message: 'An unexpected error occurred while creating the trend. Please ensure the file is plain text and not too large.', 
-        success: false 
+        success: false,
+        errors: {}, // Ensure errors object exists
     };
   }
 }
 
 export async function getTrendByRouteName(routeName: string): Promise<Trend | undefined> {
-  const processedRouteName = routeName.trim().toLowerCase();
+  // Ensure the lookup key is consistently processed: trimmed and lowercased
+  const processedRouteName = routeName.trim().toLowerCase(); 
   return trends.find(trend => trend.routeName === processedRouteName);
 }
 
@@ -203,7 +215,7 @@ export async function deleteTrendAction(prevState: any, formData: FormData) {
   try {
     const trendIndex = trends.findIndex(trend => trend.id === trendId);
     if (trendIndex === -1) {
-      return { message: 'Trend not found.', success: false };
+      return { message: 'Trend not found.', success: false, errors: {} };
     }
 
     trends.splice(trendIndex, 1);
@@ -211,9 +223,10 @@ export async function deleteTrendAction(prevState: any, formData: FormData) {
     revalidatePath('/admin/dashboard');
     revalidatePath('/trends');
 
-    return { message: 'Trend deleted successfully.', success: true };
+    return { message: 'Trend deleted successfully.', success: true, errors: null };
   } catch (error) {
     console.error('Error deleting trend:', error);
-    return { message: 'An unexpected error occurred while deleting the trend.', success: false };
+    return { message: 'An unexpected error occurred while deleting the trend.', success: false, errors: {} };
   }
 }
+

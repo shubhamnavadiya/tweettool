@@ -1,7 +1,7 @@
 import TrendForm from '@/components/admin/trend-form';
 import { getAllTrends } from '@/lib/actions';
 import type { Trend } from '@/lib/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ExternalLink, CalendarDays, ListChecks } from 'lucide-react';

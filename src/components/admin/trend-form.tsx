@@ -1,14 +1,15 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
 import { createTrendAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea'; // Though not used for fields, good to have
+// Textarea is imported but not directly used for fields here, kept for potential future use
+// import { Textarea } from '@/components/ui/textarea'; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { UploadCloud, Hash, Link as LinkIcon, ListPlus, CheckCircle, AlertCircle } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { UploadCloud, Hash, Link as LinkIcon, ListPlus, AlertCircle } from 'lucide-react';
+import { useEffect, useRef, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
@@ -24,7 +25,7 @@ function SubmitButton() {
 
 export default function TrendForm() {
   const initialState = { message: null, errors: {}, success: false, newTrendRoute: null };
-  const [state, dispatch] = useFormState(createTrendAction, initialState);
+  const [state, dispatch] = useActionState(createTrendAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 

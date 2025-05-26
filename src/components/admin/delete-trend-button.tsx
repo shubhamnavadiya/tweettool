@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useActionState, useEffect } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { deleteTrendAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ export default function DeleteTrendButton({ trendId, trendTitle }: DeleteTrendBu
   // Explicitly type the state and dispatch for useActionState
   const [state, dispatch]: [typeof initialState, (payload: FormData) => void] = useActionState(deleteTrendAction, initialState);
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
 
   useEffect(() => {
@@ -100,4 +100,3 @@ export default function DeleteTrendButton({ trendId, trendTitle }: DeleteTrendBu
     </AlertDialog>
   );
 }
-

@@ -1,4 +1,6 @@
 
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import TrendForm from '@/components/admin/trend-form';
 import { getAllTrends } from '@/lib/actions';
 import type { Trend } from '@/lib/types';
@@ -10,6 +12,13 @@ import { format } from 'date-fns';
 import DeleteTrendButton from '@/components/admin/delete-trend-button';
 
 export default async function AdminDashboardPage() {
+  const cookieStore = cookies();
+  const isAuthenticated = cookieStore.get('auth_session')?.value === 'true';
+
+  if (!isAuthenticated) {
+    redirect('/admin/login');
+  }
+
   const trends = await getAllTrends();
 
   return (

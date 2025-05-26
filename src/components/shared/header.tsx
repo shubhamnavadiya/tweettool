@@ -23,19 +23,12 @@ export default function Header() {
                 Home
               </Link>
             </li>
-            {isAdminPage && (
+            {isAdminPage && ( // Only show Admin Dashboard link if on an admin page (implies logged in)
               <li>
                 <Link href="/admin/dashboard" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                   Admin Dashboard
                 </Link>
               </li>
-            )}
-             {!isAdminPage && ( // Show simplified Admin Login link on non-admin pages
-                <li>
-                  <Link href="/admin/login" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-                    Admin Login
-                  </Link>
-                </li>
             )}
             <li>
               <Link href="/trends" className="text-sm font-medium text-foreground hover:text-primary transition-colors">

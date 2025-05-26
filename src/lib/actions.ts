@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -55,6 +56,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
       message: 'Failed to create trend. Please check the form.',
+      success: false,
     };
   }
 
@@ -65,26 +67,48 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     return {
       errors: { routeName: ['This route name is already taken.'] },
       message: 'Route name already exists.',
+      success: false,
     };
   }
 
   try {
     const fileContent = await tweetFile.text();
-    const extractedTweets: Tweet[] = fileContent
+    const specialHashtag = '#ViksitGujaratGreenGujarat';
+    const markerIndex = fileContent.indexOf(specialHashtag);
+
+    let firstTweetContent = '';
+    let remainingContentForSplitting = fileContent;
+
+    if (markerIndex !== -1) {
+      firstTweetContent = fileContent.substring(0, markerIndex).trim();
+      remainingContentForSplitting = fileContent.substring(markerIndex + specialHashtag.length).trim();
+    }
+    
+    const allTweetContents: string[] = [];
+    if (firstTweetContent.length > 0) {
+      allTweetContents.push(firstTweetContent);
+    }
+
+    const otherTweets = remainingContentForSplitting
       .split('\n')
       .map((line) => line.trim())
-      .filter((line) => line.length > 0)
+      .filter((line) => line.length > 0);
+    
+    allTweetContents.push(...otherTweets);
+
+    if (allTweetContents.length === 0) {
+       return {
+         errors: { tweetFile: ['No tweets found in the uploaded file or file is empty after processing.'] },
+         message: 'Uploaded file contains no valid tweets.',
+         success: false,
+       };
+    }
+
+    const extractedTweets: Tweet[] = allTweetContents
       .map((content, index) => ({
-        id: `${routeName}-tweet-${index + 1}`,
+        id: `${routeName}-tweet-${Date.now()}-${index + 1}`, // Unique tweet IDs
         content: content,
       }));
-
-    if (extractedTweets.length === 0) {
-      return {
-        errors: { tweetFile: ['No tweets found in the uploaded file or file is empty.'] },
-        message: 'Uploaded file contains no valid tweets.',
-      };
-    }
 
     const newTrend: Trend = {
       id: `trend-${Date.now()}`,
@@ -99,12 +123,17 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 
     revalidatePath('/admin/dashboard');
     revalidatePath(`/trends/${routeName}`);
+    revalidatePath('/trends'); // Revalidate all trends page as well
     
-    return { message: `Trend "${title}" created successfully with ${extractedTweets.length} tweets. View at /trends/${routeName}`, success: true, newTrendRoute: `/trends/${routeName}` };
+    return { 
+        message: `Trend "${title}" created successfully with ${extractedTweets.length} tweets. View at /trends/${routeName}`, 
+        success: true, 
+        newTrendRoute: `/trends/${routeName}` 
+    };
 
   } catch (error) {
     console.error('Error processing file or creating trend:', error);
-    return { message: 'An unexpected error occurred while creating the trend.' };
+    return { message: 'An unexpected error occurred while creating the trend.', success: false };
   }
 }
 
@@ -115,4 +144,40 @@ export async function getTrendByRouteName(routeName: string): Promise<Trend | un
 export async function getAllTrends(): Promise<Trend[]> {
   // Sort by creation date, newest first
   return [...trends].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+const DeleteTrendSchema = z.object({
+  trendId: z.string().min(1, 'Trend ID is required'),
+});
+
+export async function deleteTrendAction(prevState: any, formData: FormData) {
+  const validatedFields = DeleteTrendSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!validatedFields.success) {
+    return {
+      message: 'Invalid trend ID.',
+      errors: validatedFields.error.flatten().fieldErrors,
+      success: false,
+    };
+  }
+
+  const { trendId } = validatedFields.data;
+
+  try {
+    const trendIndex = trends.findIndex(trend => trend.id === trendId);
+    if (trendIndex === -1) {
+      return { message: 'Trend not found.', success: false };
+    }
+
+    trends.splice(trendIndex, 1); // Remove the trend
+
+    revalidatePath('/admin/dashboard');
+    revalidatePath('/trends'); // Revalidate the all trends page
+    // Note: Individual trend pages (/trends/[routeName]) for deleted trends will now 404, which is correct.
+
+    return { message: 'Trend deleted successfully.', success: true };
+  } catch (error) {
+    console.error('Error deleting trend:', error);
+    return { message: 'An unexpected error occurred while deleting the trend.', success: false };
+  }
 }

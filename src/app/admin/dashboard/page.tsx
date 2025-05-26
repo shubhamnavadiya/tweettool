@@ -1,3 +1,4 @@
+
 import TrendForm from '@/components/admin/trend-form';
 import { getAllTrends } from '@/lib/actions';
 import type { Trend } from '@/lib/types';
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ExternalLink, CalendarDays, ListChecks } from 'lucide-react';
 import { format } from 'date-fns';
+import DeleteTrendButton from '@/components/admin/delete-trend-button';
 
 export default async function AdminDashboardPage() {
   const trends = await getAllTrends();
@@ -41,12 +43,13 @@ export default async function AdminDashboardPage() {
                     </p>
                   </div>
                 </CardContent>
-                <CardFooter>
-                  <Button asChild variant="outline" size="sm" className="w-full">
+                <CardFooter className="flex flex-col md:flex-row gap-2 pt-4">
+                  <Button asChild variant="outline" size="sm" className="w-full md:flex-grow">
                     <Link href={`/trends/${trend.routeName}`} target="_blank" rel="noopener noreferrer">
                       View Public Page <ExternalLink className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
+                  <DeleteTrendButton trendId={trend.id} trendTitle={trend.title} />
                 </CardFooter>
               </Card>
             ))}

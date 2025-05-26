@@ -22,10 +22,7 @@ export async function loginAction(prevState: any, formData: FormData) {
       };
     }
 
-    // Mock authentication: In a real app, verify credentials against a database
-    // For this example, any username/password combination is accepted.
-    // cookies().set('session', 'admin-logged-in', { httpOnly: true, path: '/' }); // Example cookie setting
-
+    // Mock authentication
   } catch (error) {
     return { message: 'Login failed. Please try again.' };
   }
@@ -40,7 +37,8 @@ const TrendSchema = z.object({
     .trim()
     .toLowerCase()
     .min(3, 'Route name must be at least 3 characters')
-    .regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens.'),
+    .regex(/^[a-z0-9-]+$/, 'Route name can only contain lowercase letters, numbers, and hyphens.')
+    .transform(val => val.trim().toLowerCase()), // Ensure it's stored trimmed and lowercase
   tweetFile: z
     .instanceof(File)
     .refine((file) => file.size > 0, 'Tweet file is required.')
@@ -51,8 +49,8 @@ const TrendSchema = z.object({
 export async function createTrendAction(prevState: any, formData: FormData) {
   const validatedFields = TrendSchema.safeParse({
     title: formData.get('title'),
-    hashtag: formData.get('hashtag'),
-    routeName: formData.get('routeName'), // Already trimmed and lowercased by Zod transform if added
+    hashtag: formData.get('hashtag'), // Main hashtag for the trend (e.g. user input)
+    routeName: formData.get('routeName'),
     tweetFile: formData.get('tweetFile'),
   });
 
@@ -76,35 +74,36 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 
   try {
     const fileContent = await tweetFile.text();
-    const specificHashtag = '#ViksitGujaratGreenGujarat';
+    const specificTweetHashtag = '#ViksitGujaratGreenGujarat'; // The hashtag to append/ensure for each tweet
     
-    const lines = fileContent.split('\n');
     const processedTweetContents: string[] = [];
-
-    for (const line of lines) {
-        let tweetText = line.trim();
-        if (tweetText === "") continue; // Skip empty or whitespace-only lines
-
-        // Check if the tweet already ends with the specific hashtag
-        if (tweetText.endsWith(specificHashtag)) {
-            // If it ends with the hashtag, ensure there's a space before it,
-            // unless the tweet IS ONLY the hashtag.
-            if (tweetText.length > specificHashtag.length && tweetText.charAt(tweetText.length - specificHashtag.length - 1) !== ' ') {
-                // Ends with hashtag but no preceding space, and it's not just the hashtag
-                tweetText = tweetText.substring(0, tweetText.length - specificHashtag.length).trimEnd() + ' ' + specificHashtag;
-            }
-            // If it's just the hashtag or already has a space, it's fine.
-        } else {
-            // If it doesn't end with the hashtag, append it with a space.
-            tweetText = tweetText + ' ' + specificHashtag;
+    
+    // Regex to find content blocks ending with the specificTweetHashtag
+    // (.*?) non-greedy match for any character including newline
+    // #ViksitGujaratGreenGujarat literal match for the hashtag
+    // 'g' for global search, 's' for dotall (so '.' matches '\n')
+    const regex = new RegExp(`(.*?)${specificTweetHashtag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gs');
+    
+    let match;
+    const matchesFound = [];
+    while ((match = regex.exec(fileContent)) !== null) {
+        matchesFound.push(match);
+        const tweetBody = match[1].trim(); // Content before the hashtag
+        if (tweetBody.length > 0) { // Ensure the body is not empty
+            processedTweetContents.push(tweetBody + ' ' + specificTweetHashtag);
         }
-        processedTweetContents.push(tweetText);
+    }
+
+    // If no matches were found (i.e., specificTweetHashtag was not in the file),
+    // treat the entire file content (if not empty) as a single tweet.
+    if (matchesFound.length === 0 && fileContent.trim().length > 0) {
+        processedTweetContents.push(fileContent.trim() + ' ' + specificTweetHashtag);
     }
 
     if (processedTweetContents.length === 0) {
        return {
-         errors: { tweetFile: ['No tweets found in the uploaded file or file is empty after processing.'] },
-         message: 'Uploaded file contains no valid tweets.',
+         errors: { tweetFile: ['No valid tweets found. Ensure content exists before #ViksitGujaratGreenGujarat or the file is not empty.'] },
+         message: 'Uploaded file contains no processable tweets based on the specified format.',
          success: false,
        };
     }
@@ -118,7 +117,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     const newTrend: Trend = {
       id: `trend-${Date.now()}`,
       title,
-      hashtag,
+      hashtag, // This is the trend's main hashtag from the form
       routeName,
       tweets: extractedTweets,
       createdAt: new Date(),
@@ -136,8 +135,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
         newTrendRoute: `/trends/${routeName}` 
     };
 
-  } catch (error)
-{
+  } catch (error) {
     console.error('Error processing file or creating trend:', error);
     return { 
         message: 'An unexpected error occurred while creating the trend. Please ensure the file is plain text and not too large.', 

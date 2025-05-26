@@ -63,6 +63,11 @@ const TrendSchema = z.object({
     .refine((file) => file.size < 5 * 1024 * 1024, 'File size must be less than 5MB.'),
 });
 
+// Helper function to escape special characters for use in a regular expression
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
+
 export async function createTrendAction(prevState: any, formData: FormData) {
   const validatedFields = TrendSchema.safeParse({
     title: formData.get('title'),
@@ -79,7 +84,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     };
   }
 
-  const { title, hashtag, routeName, tweetFile } = validatedFields.data;
+  const { title, hashtag: dynamicHashtag, routeName, tweetFile } = validatedFields.data;
 
   if (trends.some(trend => trend.routeName === routeName)) {
     return {
@@ -91,62 +96,43 @@ export async function createTrendAction(prevState: any, formData: FormData) {
 
   try {
     const fileContent = await tweetFile.text();
-    const specificTweetHashtag = '#ViksitGujaratGreenGujarat';
-    const tweets: Tweet[] = [];
+    const rawTweets: string[] = [];
 
-    // Regex to find content blocks ending with the specificTweetHashtag
-    // (.*?) non-greedy match for any character including newline, up to the specific hashtag
+    // Regex to find content blocks ending with the dynamicHashtag
+    // (.*?) non-greedy match for any character including newline, up to the dynamic hashtag
     // The 'gs' flags are crucial: 'g' for global, 's' for dotall (so '.' matches '\n')
-    const regex = new RegExp(`(.*?)${specificTweetHashtag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\n\\n|$)`, 'gs');
+    const regex = new RegExp(`(.*?)${escapeRegExp(dynamicHashtag)}(?=\\n\\n|$)`, 'gs');
     
     let match;
-    const rawTweets = [];
     while ((match = regex.exec(fileContent)) !== null) {
         // match[1] is the content before the hashtag
         const tweetBody = match[1].trim();
-        if (tweetBody.length > 0) { // Ensure the body is not empty
-            rawTweets.push(`${tweetBody} ${specificTweetHashtag}`);
+        if (tweetBody.length > 0) { // Ensure the body is not empty (i.e., not just the hashtag itself)
+            rawTweets.push(`${tweetBody} ${dynamicHashtag}`);
         }
     }
 
-    // Fallback: if no specific hashtag matches were found, but the file has content,
-    // treat the whole file as one tweet, or split by lines if appropriate.
-    // For now, let's assume the regex approach is primary. If it yields no tweets,
-    // and the file content is not empty and does not contain the hashtag at all,
-    // we could treat lines as tweets and append the hashtag.
-    // However, the user prompt emphasized "content of before #ViksitGujaratGreenGujarat"
-
-    if (rawTweets.length === 0) {
-        // If regex found nothing, it implies the specific format was not met.
-        // We might want to check if the file is empty or just doesn't conform.
-        // Let's refine this: if rawTweets is empty, but fileContent isn't, it could be an issue.
-        // For now, if the regex doesn't find content formatted as "stuff #ViksitGujaratGreenGujarat", it yields no tweets.
-        // This fulfills "content of before #ViksitGujaratGreenGujarat".
-        // And "take some twite only contain which have #ViksitGujaratGreenGujarat that I want to remove"
-        // is handled by `tweetBody.length > 0`.
-    }
-
-
-    if (rawTweets.length === 0 && fileContent.trim().length > 0 && !fileContent.includes(specificTweetHashtag)) {
-      // If no hashtag was found at all, and the file is not empty, treat each line as a tweet.
+    // Fallback: if the regex found no specific hashtag matches, 
+    // but the file has content and does not contain the dynamic hashtag at all,
+    // treat each line as a tweet and append the dynamic hashtag.
+    if (rawTweets.length === 0 && fileContent.trim().length > 0 && !fileContent.includes(dynamicHashtag)) {
        const lines = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
        lines.forEach(line => {
-           rawTweets.push(line.trim() + ' ' + specificTweetHashtag);
+           rawTweets.push(line.trim() + ' ' + dynamicHashtag);
        });
-    } else if (rawTweets.length === 0 && fileContent.trim().length > 0 && fileContent.trim() === specificTweetHashtag) {
+    } else if (rawTweets.length === 0 && fileContent.trim().length > 0 && fileContent.trim() === dynamicHashtag) {
         // File only contains the hashtag, ignore.
          return {
-            errors: { tweetFile: ['File only contains the hashtag or is effectively empty.'] },
-            message: 'Uploaded file only contains the hashtag or no valid content before it.',
+            errors: { tweetFile: [`File only contains the hashtag (${dynamicHashtag}) or is effectively empty.`] },
+            message: `Uploaded file only contains the hashtag (${dynamicHashtag}) or no valid content before it.`,
             success: false,
         };
     }
 
-
     if (rawTweets.length === 0) {
        return {
-         errors: { tweetFile: ['No valid tweets found. Ensure content exists before #ViksitGujaratGreenGujarat and is not just the hashtag.'] },
-         message: 'Uploaded file contains no processable tweets based on the specified format.',
+         errors: { tweetFile: [`No valid tweets found. Ensure content exists before ${dynamicHashtag} and is not just the hashtag.`] },
+         message: `Uploaded file contains no processable tweets based on the specified format (content before ${dynamicHashtag}).`,
          success: false,
        };
     }
@@ -161,7 +147,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     const newTrend: Trend = {
       id: `trend-${Date.now()}`,
       title,
-      hashtag,
+      hashtag: dynamicHashtag, // Store the dynamic hashtag
       routeName,
       tweets: extractedTweets,
       createdAt: new Date(),
@@ -174,7 +160,7 @@ export async function createTrendAction(prevState: any, formData: FormData) {
     revalidatePath('/trends');
     
     return { 
-        message: `Trend "${title}" created successfully with ${extractedTweets.length} tweets. View at /trends/${routeName}`, 
+        message: `Trend "${title}" created successfully with ${extractedTweets.length} tweets using hashtag ${dynamicHashtag}. View at /trends/${routeName}`, 
         success: true, 
         newTrendRoute: `/trends/${routeName}` 
     };
